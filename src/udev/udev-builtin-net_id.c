@@ -135,6 +135,7 @@ struct netnames {
         bool mac_valid;
 
         struct udev_device *pcidev;
+        char pci_virtfn[IFNAMSIZ];
         char pci_slot[IFNAMSIZ];
         char pci_path[IFNAMSIZ];
         char pci_onboard[IFNAMSIZ];
@@ -157,6 +158,79 @@ static struct udev_device *skip_virtio(struct udev_device *dev) {
         while (parent && streq_ptr("virtio", udev_device_get_subsystem(parent)))
                 parent = udev_device_get_parent(parent);
         return parent;
+}
+
+static int dev_pci_sriov_virtfn(struct udev_device *dev, struct netnames *names) {
+        struct udev *udev = udev_device_get_udev(names->pcidev);
+        const char *physfn_link_file, *virtfn_link_file;
+	const char *virtfn_phys_port_id, *physfn_phys_port_id;
+        struct udev_device *physfn_netdev;
+        _cleanup_free_ char *physfn_syspath = NULL;
+        _cleanup_free_ char *virtfn_syspath = NULL;
+        char *physfn_net_syspath = NULL;
+        struct dirent *dent;
+        char physfn_netname[IFNAMSIZ];
+        char *virtfn_suffix = NULL;
+        DIR *dir = NULL;
+        size_t l;
+        char *s;
+
+	/* Check if this is a virtual function & get path to physical function. */
+        physfn_link_file = strjoina(udev_device_get_syspath(names->pcidev), "/physfn");
+        if (readlink_and_canonicalize(physfn_link_file, &physfn_syspath))
+                return -ENOENT;
+
+        /* Find name of the physfn's network interface.
+         * Match phys_port_id if available, since some PCI devices have more than one network interface.
+         * Otherwise just use the first (which should be the only) name in physfn's /net directory. */
+        virtfn_phys_port_id = udev_device_get_sysattr_value(dev, "phys_port_id");
+        physfn_netname[0] = '\0';
+        dir = opendir(strjoina(physfn_syspath, "/net"));
+        for (dent = readdir(dir); dent != NULL; dent = readdir(dir)) {
+                if (dent->d_name[0] == '.')
+                        continue;
+                if (strlen(virtfn_phys_port_id)) {
+                        physfn_net_syspath = strjoina(physfn_syspath, "/net/", dent->d_name);
+                        physfn_netdev = udev_device_new_from_syspath(udev, physfn_net_syspath);
+                        if (physfn_netdev) {
+                                physfn_phys_port_id = udev_device_get_sysattr_value(physfn_netdev, "phys_port_id");
+                                if (streq(virtfn_phys_port_id, physfn_phys_port_id))
+                                        strncpy(physfn_netname, dent->d_name, sizeof(physfn_netname));
+                                else
+                                        syslog(LOG_ALERT, "...%s != %s\n", virtfn_phys_port_id, physfn_phys_port_id);
+                                udev_device_unref(physfn_netdev);
+                        } else
+                                continue;
+                } else
+                        strncpy(physfn_netname, dent->d_name, sizeof(physfn_netname));
+        }
+        closedir(dir);
+        if (!strlen(physfn_netname))
+                return -ENOENT;
+
+        /* find the virtfn index */
+        dir = opendir(physfn_syspath);
+       	for (dent = readdir(dir); dent != NULL; dent = readdir(dir)) {
+       	        if (strncmp(dent->d_name, "virtfn", 6))
+       	       	        continue;
+                virtfn_link_file = strjoina(physfn_syspath, "/", dent->d_name);
+                readlink_and_canonicalize(virtfn_link_file, &virtfn_syspath);
+                if (streq(udev_device_get_syspath(names->pcidev), virtfn_syspath)) {
+                        virtfn_suffix = strjoina(physfn_netname, "v", &dent->d_name[6]);
+                        break;
+                }
+        }
+        closedir(dir);
+        if (!virtfn_suffix < 0)
+                return -ENOENT;
+
+        /* create the interface name */
+        s = names->pci_virtfn;
+        l = sizeof(names->pci_virtfn);
+        l = strpcpy(&s, l, virtfn_suffix);
+        if (l == 0)
+       	        names->pci_virtfn[0] = '\0';
+        return 0;
 }
 
 /* retrieve on-board index number and label from firmware */
@@ -430,6 +504,7 @@ static int names_pci(struct udev_device *dev, struct netnames *names) {
         }
         dev_pci_onboard(dev, names);
         dev_pci_slot(dev, names);
+        dev_pci_sriov_virtfn(dev, names);
         return 0;
 }
 
@@ -706,6 +781,10 @@ static int builtin_net_id(struct udev_device *dev, int argc, char *argv[], bool 
         /* plain PCI device */
         if (names.type == NET_PCI) {
                 char str[IFNAMSIZ];
+
+                if (names.pci_virtfn[0])
+                        if (snprintf(str, sizeof(str), "%s", names.pci_virtfn) < (int)sizeof(str))
+                                udev_builtin_add_property(dev, test, "ID_NET_NAME_VIRTFN", str);
 
                 if (names.pci_onboard[0])
                         if (snprintf(str, sizeof(str), "%s%s", prefix, names.pci_onboard) < (int)sizeof(str))

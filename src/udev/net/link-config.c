@@ -420,6 +420,9 @@ int link_config_apply(link_config_ctx *ctx, link_config *config,
                                 case NAMEPOLICY_DATABASE:
                                         new_name = udev_device_get_property_value(device, "ID_NET_NAME_FROM_DATABASE");
                                         break;
+                                case NAMEPOLICY_VIRTFN:
+                                        new_name = udev_device_get_property_value(device, "ID_NET_NAME_VIRTFN");
+                                        break;
                                 case NAMEPOLICY_ONBOARD:
                                         new_name = udev_device_get_property_value(device, "ID_NET_NAME_ONBOARD");
                                         break;
@@ -512,6 +515,7 @@ DEFINE_CONFIG_PARSE_ENUM(config_parse_mac_policy, mac_policy, MACPolicy,
 static const char* const name_policy_table[_NAMEPOLICY_MAX] = {
         [NAMEPOLICY_KERNEL] = "kernel",
         [NAMEPOLICY_DATABASE] = "database",
+        [NAMEPOLICY_VIRTFN] = "virtfn",
         [NAMEPOLICY_ONBOARD] = "onboard",
         [NAMEPOLICY_SLOT] = "slot",
         [NAMEPOLICY_PATH] = "path",

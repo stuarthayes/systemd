@@ -45,7 +45,7 @@ const char *net_get_name(struct udev_device *device) {
         assert(device);
 
         /* fetch some persistent data unique (on this machine) to this device */
-        FOREACH_STRING(field, "ID_NET_NAME_ONBOARD", "ID_NET_NAME_SLOT", "ID_NET_NAME_PATH", "ID_NET_NAME_MAC") {
+        FOREACH_STRING(field, "ID_NET_NAME_VIRTFN", "ID_NET_NAME_ONBOARD", "ID_NET_NAME_SLOT", "ID_NET_NAME_PATH", "ID_NET_NAME_MAC") {
                 name = udev_device_get_property_value(device, field);
                 if (name)
                         return name;
