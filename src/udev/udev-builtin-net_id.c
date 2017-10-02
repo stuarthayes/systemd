@@ -311,6 +311,7 @@ static int dev_pci_slot(struct udev_device *dev, struct netnames *names) {
         char *s;
         const char *attr, *port_name;
         struct udev_device *pci = NULL;
+        struct udev_device *hotplug_slot_dev;
         char slots[PATH_MAX];
         _cleanup_closedir_ DIR *dir = NULL;
         struct dirent *dent;
@@ -356,28 +357,35 @@ static int dev_pci_slot(struct udev_device *dev, struct netnames *names) {
                 goto out;
         }
 
-        FOREACH_DIRENT_ALL(dent, dir, break) {
-                int i;
-                char *rest, *address, str[PATH_MAX];
+        hotplug_slot_dev = names->pcidev;
+        while (hotplug_slot_dev) {
+                FOREACH_DIRENT_ALL(dent, dir, break) {
+                        int i;
+                        char *rest, *address, str[PATH_MAX];
 
-                if (dent->d_name[0] == '.')
-                        continue;
-                i = strtol(dent->d_name, &rest, 10);
-                if (rest[0] != '\0')
-                        continue;
-                if (i < 1)
-                        continue;
+                        if (dent->d_name[0] == '.')
+                                continue;
+                        i = strtol(dent->d_name, &rest, 10);
+                        if (rest[0] != '\0')
+                                continue;
+                        if (i < 1)
+                                continue;
 
-                snprintf(str, sizeof str, "%s/%s/address", slots, dent->d_name);
-                if (read_one_line_file(str, &address) >= 0) {
-                        /* match slot address with device by stripping the function */
-                        if (strneq(address, udev_device_get_sysname(names->pcidev), strlen(address)))
-                                hotplug_slot = i;
-                        free(address);
+                        snprintf(str, sizeof str, "%s/%s/address", slots, dent->d_name);
+                        if (read_one_line_file(str, &address) >= 0) {
+                                /* match slot address with device by stripping the function */
+                                if (strneq(address, udev_device_get_sysname(hotplug_slot_dev), strlen(address)))
+                                        hotplug_slot = i;
+                                free(address);
+                        }
+
+                        if (hotplug_slot > 0)
+                                break;
                 }
-
                 if (hotplug_slot > 0)
                         break;
+                rewinddir(dir);
+                hotplug_slot_dev = udev_device_get_parent_with_subsystem_devtype(hotplug_slot_dev, "pci", NULL);
         }
 
         if (hotplug_slot > 0) {
