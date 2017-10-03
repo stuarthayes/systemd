@@ -39,7 +39,6 @@ typedef enum MACPolicy {
 typedef enum NamePolicy {
         NAMEPOLICY_KERNEL,
         NAMEPOLICY_DATABASE,
-        NAMEPOLICY_VIRTFN,
         NAMEPOLICY_ONBOARD,
         NAMEPOLICY_SLOT,
         NAMEPOLICY_PATH,
