@@ -108,7 +108,6 @@
 #include <unistd.h>
 #include <linux/pci_regs.h>
 
-#include "fs-util.h"
 #include "dirent-util.h"
 #include "fd-util.h"
 #include "fileio.h"
@@ -178,7 +177,7 @@ static int dev_pci_sriov_virtfn(struct udev_device *dev, struct netnames *names)
 
 	/* Check if this is a virtual function & get path to physical function. */
         physfn_link_file = strjoina(udev_device_get_syspath(names->pcidev), "/physfn");
-        if (readlink_and_canonicalize(physfn_link_file, NULL, &physfn_syspath))
+        if (readlink_and_canonicalize(physfn_link_file, &physfn_syspath))
                 return -ENOENT;
 
         /* Find name of the physfn's network interface.
@@ -215,14 +214,14 @@ static int dev_pci_sriov_virtfn(struct udev_device *dev, struct netnames *names)
        	        if (strncmp(dent->d_name, "virtfn", 6))
        	       	        continue;
                 virtfn_link_file = strjoina(physfn_syspath, "/", dent->d_name);
-                readlink_and_canonicalize(virtfn_link_file, NULL, &virtfn_syspath);
+                readlink_and_canonicalize(virtfn_link_file, &virtfn_syspath);
                 if (streq(udev_device_get_syspath(names->pcidev), virtfn_syspath)) {
                         virtfn_suffix = strjoina(physfn_netname, "v", &dent->d_name[6]);
                         break;
                 }
         }
         closedir(dir);
-        if (!virtfn_suffix)
+        if (!virtfn_suffix < 0)
                 return -ENOENT;
 
         /* create the interface name */
