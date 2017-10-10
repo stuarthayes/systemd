@@ -278,6 +278,10 @@ static bool is_pci_multifunction(struct udev_device *dev) {
         return false;
 }
 
+static bool is_pci_using_ari(struct udev_device *dev) {
+        return udev_device_get_sysattr_value(dev, "using_ari");
+}
+
 static int dev_pci_slot(struct udev_device *dev, struct netnames *names) {
         struct udev *udev = udev_device_get_udev(names->pcidev);
         unsigned domain, bus, slot, func, dev_port = 0;
@@ -293,6 +297,8 @@ static int dev_pci_slot(struct udev_device *dev, struct netnames *names) {
 
         if (sscanf(udev_device_get_sysname(names->pcidev), "%x:%x:%x.%u", &domain, &bus, &slot, &func) != 4)
                 return -ENOENT;
+        if (is_pci_using_ari(names->pcidev))
+                func = slot * 8 + func;
 
         /* kernel provided port index for multiple ports on a single PCI function */
         attr = udev_device_get_sysattr_value(dev, "dev_port");
